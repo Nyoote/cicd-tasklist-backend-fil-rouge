@@ -71,33 +71,49 @@ pipeline {
         stage('Trivy scan') {
             steps {
                 sh '''
-                    trivy image \
-                        --severity HIGH,CRITICAL \
-                        --format table \
-                        --output trivy-report.txt \
-                        $DOCKER_IMAGE:$IMAGE_TAG || true
+                    mkdir -p reports
 
                     trivy image \
-                        --severity HIGH,CRITICAL \
-                        --format json \
-                        --output trivy-report.json \
-                        $DOCKER_IMAGE:$IMAGE_TAG || true
+                    --severity HIGH,CRITICAL \
+                    --format table \
+                    --output reports/trivy-report.txt \
+                    $DOCKER_IMAGE:$IMAGE_TAG || true
+
+                    trivy image \
+                    --severity HIGH,CRITICAL \
+                    --format json \
+                    --output reports/trivy-report.json \
+                    $DOCKER_IMAGE:$IMAGE_TAG || true
+
+                    ls -lah reports
                 '''
             }
+
             post {
                 always {
-                    archiveArtifacts artifacts: 'trivy-report.*', fingerprint: true
+                    archiveArtifacts artifacts: 'reports/', fingerprint: true, allowEmptyArchive: false
                 }
             }
         }
 
         stage('Generate SBOM') {
             steps {
-                sh 'trivy image --format cyclonedx -o sbom.json $DOCKER_IMAGE:$IMAGE_TAG'
+                sh '''
+                    mkdir -p reports
+
+                    docker run --rm \
+                    -v /var/run/docker.sock:/var/run/docker.sock \
+                    -v $(pwd)/reports:/reports \
+                    aquasec/trivy:latest image \
+                    --format cyclonedx \
+                    --output /reports/sbom.json \
+                    $DOCKER_IMAGE:$IMAGE_TAG
+                '''
             }
+
             post {
                 always {
-                    archiveArtifacts artifacts: 'sbom.json', fingerprint: true, allowEmptyArchive: true
+                    archiveArtifacts artifacts: 'reports/sbom.json', fingerprint: true, allowEmptyArchive: true
                 }
             }
         }
