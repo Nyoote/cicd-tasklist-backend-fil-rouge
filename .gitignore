@@ -132,5 +132,4 @@ dist
 dist/
 
 .scannerwork/
-sonar-project.properties
 sbom-spdx.json
