@@ -1,0 +1,21 @@
+services:
+  sonar-scanner:
+    image: sonarsource/sonar-scanner-cli:latest
+    working_dir: /usr/src
+    user: "0:0"
+    command:
+      - -Dsonar.host.url=${SONAR_HOST_URL}
+      - -Dsonar.login=${SONAR_TOKEN}
+      - -Dsonar.projectKey=${SONAR_PROJECT_KEY}
+      - -Dsonar.qualitygate.wait=true
+      - -Dsonar.qualitygate.timeout=300
+    environment:
+      SONAR_USER_HOME: /tmp/.sonar
+    volumes:
+      - .:/usr/src
+      - sonar-cache:/tmp/.sonar/cache
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  sonar-cache:
