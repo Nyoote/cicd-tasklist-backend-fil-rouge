@@ -54,19 +54,19 @@ pipeline {
       }
     }
 
-    stage('SonarQube analysis and Quality Gate') {
-      steps {
+    stage('SonarQube analysis') {
+    steps {
         withCredentials([string(credentialsId: 'faustine-sonar-token', variable: 'SONAR_TOKEN')]) {
-          sh '''
-            docker compose -f docker-compose.ci.yml run --rm \
-              -e SONAR_HOST_URL="${SONAR_HOST_URL}" \
-              -e SONAR_TOKEN="${SONAR_TOKEN}" \
-              -e SONAR_PROJECT_KEY="${SONAR_PROJECT_KEY}" \
-              sonar-scanner
-          '''
+            sh '''
+                docker run --rm \
+                  -v "$PWD:/usr/src" \
+                  -e SONAR_HOST_URL="$SONAR_HOST_URL" \
+                  -e SONAR_TOKEN="$SONAR_TOKEN" \
+                  sonarsource/sonar-scanner-cli
+            '''
         }
-      }
     }
+}
 
     stage('Docker build') {
       steps {
