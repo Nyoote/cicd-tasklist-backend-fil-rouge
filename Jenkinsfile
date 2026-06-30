@@ -1,21 +1,23 @@
 pipeline {
     agent any
 
-    triggers {
-        pollSCM('H/2 * * * *')
-    }
-
     environment {
-        SONAR_HOST_URL = 'https://sonarqube.cicd.kits.ext.educentre.fr'
-        SONAR_PROJECT_KEY = 'faustine-cicd-tasklist-backend'
+        DOCKER_IMAGE = "nyoote/tasklist-backend"
+        DOCKER_TAG = "local"
 
-        LOCAL_IMAGE = 'jenkins-with-docker'
-        DOCKERHUB_IMAGE = 'nyoote/tasklist-backend'
+        SONAR_HOST_URL = "https://sonarqube.cicd.kits.ext.educentre.fr"
+        SONAR_PROJECT_KEY = "faustine-cicd-tasklist-backend"
 
-        DOCKER_BUILDKIT = '1'
+        DOCKERHUB_CREDENTIALS = "dockerhub-creds-id"
     }
 
     stages {
+
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
 
         stage('Install dependencies') {
             steps {
@@ -23,122 +25,84 @@ pipeline {
             }
         }
 
-        stage('Generate Prisma client') {
+        stage('Prisma Generate') {
             steps {
-                sh 'npm run prisma:generate'
+                sh 'npx prisma generate'
             }
         }
 
-        stage('Unit tests') {
+        stage('Unit Tests (coverage)') {
             steps {
                 sh 'npm run test:coverage'
-                sh 'mkdir -p reports coverage'
-                sh 'cp reports/junit.xml reports/junit-unit.xml'
-                sh 'cp coverage/lcov.info coverage/unit.lcov.info'
-            }
-            post {
-                always {
-                    junit allowEmptyResults: true, testResults: 'reports/junit-unit.xml'
-                }
             }
         }
 
-        stage('E2E tests') {
+        stage('E2E Tests (coverage)') {
             steps {
                 sh 'npm run test:e2e:coverage'
-                sh 'cp reports/junit.xml reports/junit-e2e.xml'
-                sh 'cp coverage/lcov.info coverage/e2e.lcov.info'
-            }
-            post {
-                always {
-                    junit allowEmptyResults: true, testResults: 'reports/junit-e2e.xml'
-                }
             }
         }
 
         stage('SonarQube Analysis') {
             steps {
-                withCredentials([
-                    string(credentialsId: 'faustine-sonar-token', variable: 'SONAR_TOKEN')
-                ]) {
-                    sh '''
-                    docker run --rm \
-                    -e SONAR_HOST_URL=https://sonarqube.cicd.kits.ext.educentre.fr \
-                    -e SONAR_TOKEN=$SONAR_TOKEN \
-                    -v $WORKSPACE:/usr/src \
-                    -w /usr/src \
-                    sonarsource/sonar-scanner-cli \
-                    -Dsonar.projectKey=faustine-cicd-tasklist-backend \
-                    -Dsonar.sources=src \
-                    -Dsonar.tests=src/__tests__ \
-                    -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info \
-                    -Dsonar.projectBaseDir=/usr/src
-                    '''
+                withSonarQubeEnv('SonarQube') {
+                    sh 'sonar-scanner'
                 }
             }
         }
 
-        stage('Docker Build') {
+        stage('Quality Gate') {
             steps {
-                sh 'docker build -t ${LOCAL_IMAGE} .'
+                timeout(time: 5, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
+                }
             }
         }
 
-        stage('Trivy Scan') {
+        stage('Build Docker Image') {
             steps {
-                sh '''
-                    mkdir -p reports
-                    trivy image \
-                      --format json \
-                      -o reports/trivy-vulnerabilities.json \
-                      ${LOCAL_IMAGE}
-                '''
+                sh """
+                    docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} .
+                """
             }
-            post {
-                always {
-                    archiveArtifacts allowEmptyArchive: true,
-                        artifacts: 'reports/trivy-vulnerabilities.json'
-                }
+        }
+
+        stage('Trivy Security Scan') {
+            steps {
+                sh """
+                    trivy image --severity CRITICAL,HIGH --format table \
+                    ${DOCKER_IMAGE}:${DOCKER_TAG} > trivy-report.txt
+                """
             }
         }
 
         stage('Generate SBOM') {
             steps {
-                sh '''
-                    trivy image \
-                      --format cyclonedx \
-                      -o reports/sbom.cdx.json \
-                      ${LOCAL_IMAGE}
-                '''
-            }
-            post {
-                always {
-                    archiveArtifacts allowEmptyArchive: true,
-                        artifacts: 'reports/sbom.cdx.json'
-                }
+                sh """
+                    trivy image --format spdx-json \
+                    --output sbom-spdx.json \
+                    ${DOCKER_IMAGE}:${DOCKER_TAG}
+                """
             }
         }
 
-        stage('Push Docker image') {
+        stage('Publish Reports') {
             steps {
-                withCredentials([
-                    usernamePassword(
-                        credentialsId: 'nyoote-dockerhub-password',
-                        usernameVariable: 'DOCKERHUB_USERNAME',
-                        passwordVariable: 'DOCKERHUB_PASSWORD'
-                    )
-                ]) {
-                    sh '''
-                        echo "$DOCKERHUB_PASSWORD" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
+                archiveArtifacts artifacts: 'trivy-report.txt,sbom-spdx.json', fingerprint: true
+            }
+        }
 
-                        docker tag ${LOCAL_IMAGE} ${DOCKERHUB_IMAGE}:${BUILD_NUMBER}
-                        docker tag ${LOCAL_IMAGE} ${DOCKERHUB_IMAGE}:latest
-
-                        docker push ${DOCKERHUB_IMAGE}:${BUILD_NUMBER}
-                        docker push ${DOCKERHUB_IMAGE}:latest
-
-                        docker logout
-                    '''
+        stage('Push Docker Image') {
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: "${DOCKERHUB_CREDENTIALS}",
+                    usernameVariable: 'DOCKER_USER',
+                    passwordVariable: 'DOCKER_PASS'
+                )]) {
+                    sh """
+                        echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+                        docker push ${DOCKER_IMAGE}:${DOCKER_TAG}
+                    """
                 }
             }
         }
@@ -146,9 +110,6 @@ pipeline {
 
     post {
         always {
-            archiveArtifacts allowEmptyArchive: true,
-                artifacts: 'coverage/*.lcov.info,reports/*.json,reports/*.xml'
-
             cleanWs()
         }
     }
