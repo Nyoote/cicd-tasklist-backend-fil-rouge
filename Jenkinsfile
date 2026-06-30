@@ -67,41 +67,28 @@ pipeline {
             }
         }
 
-        stage('Trivy Security Scan') {
-            steps {
-                sh '''
-                docker run --rm \
-                -v /var/run/docker.sock:/var/run/docker.sock \
-                aquasec/trivy:latest image \
-                --severity CRITICAL,HIGH \
-                --format table \
-                nyoote/tasklist-backend:local
-                '''
+        stage('Trivy scan') {
+            when { expression { shouldRunStage('Trivy scan', ['Jenkinsfile', 'package.json', 'package-lock.json', 'src/**', 'prisma/**', 'Dockerfile', 'docker-compose.yml', 'docker-compose.ci.yml']) } }
+            steps { sh 'npm run trivy:scan' }
+            post {
+                success { markStageSuccess('Trivy scan') }
+                always { archiveArtifacts allowEmptyArchive: true, artifacts: 'reports/trivy-vulnerabilities.json' }
             }
         }
 
-       stage('Generate SBOM') {
-            steps {
-                sh '''
-                docker run --rm \
-                -v /var/run/docker.sock:/var/run/docker.sock \
-                -v $WORKSPACE:/app \
-                -w /app \
-                aquasec/trivy:latest image \
-                --scanners vuln,secret,license \
-                --format spdx-json \
-                --output sbom-spdx.json \
-                nyoote/tasklist-backend:local
-
-                echo "=== CHECK FILE ==="
-                ls -lah
-                '''
+        stage('Generate SBOM') {
+            when { expression { shouldRunStage('Generate SBOM', ['Jenkinsfile', 'package.json', 'package-lock.json', 'src/**', 'prisma/**', 'Dockerfile', 'docker-compose.yml', 'docker-compose.ci.yml']) } }
+            steps { sh 'npm run trivy:sbom' }
+            post {
+                success { markStageSuccess('Generate SBOM') }
+                always { archiveArtifacts allowEmptyArchive: true, artifacts: 'reports/sbom.cdx.json' }
             }
         }
+
 
         stage('Publish Reports') {
             steps {
-                archiveArtifacts artifacts: 'sbom-spdx.json', fingerprint: true    
+                archiveArtifacts artifacts: 'reports/*.json', fingerprint: true    
             }
         }
 
