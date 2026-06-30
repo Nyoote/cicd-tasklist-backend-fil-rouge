@@ -71,23 +71,26 @@ pipeline {
             steps {
                 sh '''
                 docker run --rm \
-                    -v /var/run/docker.sock:/var/run/docker.sock \
-                    aquasec/trivy:latest \
-                    image \
-                    --severity CRITICAL,HIGH \
-                    --format table \
-                    nyoote/tasklist-backend:local
+                -v /var/run/docker.sock:/var/run/docker.sock \
+                aquasec/trivy:latest image \
+                --severity CRITICAL,HIGH \
+                --format table \
+                nyoote/tasklist-backend:local
                 '''
             }
         }
 
-        stage('Generate SBOM') {
+       stage('Generate SBOM') {
             steps {
-                sh """
-                    trivy image --format spdx-json \
-                    --output sbom-spdx.json \
-                    ${DOCKER_IMAGE}:${DOCKER_TAG}
-                """
+                sh '''
+                docker run --rm \
+                -v /var/run/docker.sock:/var/run/docker.sock \
+                -v $WORKSPACE:/workspace \
+                aquasec/trivy:latest image \
+                --format spdx-json \
+                --output /workspace/sbom-spdx.json \
+                nyoote/tasklist-backend:local
+                '''
             }
         }
 
