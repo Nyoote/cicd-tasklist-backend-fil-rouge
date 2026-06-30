@@ -74,7 +74,8 @@ pipeline {
                             -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info \
                             -Dsonar.sourceEncoding=UTF-8 \
                             -Dsonar.host.url=${SONAR_HOST_URL} \
-                            -Dsonar.token=${SONAR_TOKEN}
+                            -Dsonar.token=${SONAR_TOKEN} \
+                            -Dsonar.working.directory=.scannerwork
                         '''
                     }
                 }
