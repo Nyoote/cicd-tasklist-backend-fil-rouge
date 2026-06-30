@@ -43,25 +43,21 @@ pipeline {
             }
         }
 
-        stage('SonarQube Analysis') {
+        stage('SonarQube analysis and Quality Gate') {
             steps {
-                withSonarQubeEnv('SonarQube') {
-                    sh """
-                        sonar-scanner \
-                        -Dsonar.projectKey=nyoote-backend \
-                        -Dsonar.sources=src
-                    """
+                withCredentials([string(credentialsId: 'faustine-sonar-token', variable: 'SONAR_TOKEN')]) {
+                sh '''
+                    docker compose -f docker-compose.ci.yml run --rm \
+                    -e SONAR_HOST_URL="${SONAR_HOST_URL}" \
+                    -e SONAR_TOKEN="${SONAR_TOKEN}" \
+                    -e SONAR_PROJECT_KEY="${SONAR_PROJECT_KEY}" \
+                    sonar-scanner
+                '''
                 }
             }
         }
 
-        stage('Quality Gate') {
-            steps {
-                timeout(time: 5, unit: 'MINUTES') {
-                    waitForQualityGate abortPipeline: true
-                }
-            }
-        }
+    
 
         stage('Build Docker Image') {
             steps {
