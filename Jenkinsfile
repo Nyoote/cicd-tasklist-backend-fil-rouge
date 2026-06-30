@@ -1,16 +1,18 @@
 pipeline {
     agent any
 
+    options {
+        timeout(time: 30, unit: 'MINUTES')
+        timestamps()
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+    }
+
     environment {
         DOCKER_IMAGE = "nyoote/tasklist-backend"
-        DOCKER_CREDENTIALS_ID = "nyoote-dockerhub-password"
-        DOCKER_TAG = "local"
+        DOCKER_TAG = "${BUILD_NUMBER}"
 
         SONAR_HOST_URL = "https://sonarqube.cicd.kits.ext.educentre.fr"
         SONAR_PROJECT_KEY = "faustine-cicd-tasklist-backend"
-        SONAR_TOKEN = credentials("faustine-sonar-token")
-
-        DOCKERHUB_CREDENTIALS = "dockerhub-creds-id"
     }
 
     stages {
@@ -59,12 +61,12 @@ pipeline {
             }
         }
 
-    
-
         stage('Build Docker Image') {
             steps {
                 sh """
-                    docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} .
+                    docker build \
+                        -t ${DOCKER_IMAGE}:${DOCKER_TAG} \
+                        -t ${DOCKER_IMAGE}:latest .
                 """
             }
         }
@@ -75,16 +77,16 @@ pipeline {
                     mkdir -p reports
 
                     trivy image \
-                    --severity HIGH,CRITICAL \
-                    --format table \
-                    --output reports/trivy-report.txt \
-                    $DOCKER_IMAGE:$IMAGE_TAG || true
+                        --severity HIGH,CRITICAL \
+                        --format table \
+                        --output reports/trivy-report.txt \
+                        ${DOCKER_IMAGE}:${DOCKER_TAG} || true
 
                     trivy image \
-                    --severity HIGH,CRITICAL \
-                    --format json \
-                    --output reports/trivy-report.json \
-                    $DOCKER_IMAGE:$IMAGE_TAG || true
+                        --severity HIGH,CRITICAL \
+                        --format json \
+                        --output reports/trivy-report.json \
+                        ${DOCKER_IMAGE}:${DOCKER_TAG} || true
 
                     ls -lah reports
                 '''
@@ -92,26 +94,24 @@ pipeline {
 
             post {
                 always {
-                    archiveArtifacts artifacts: 'reports/', fingerprint: true, allowEmptyArchive: false
+                    archiveArtifacts artifacts: 'reports/', fingerprint: true, allowEmptyArchive: true
                 }
             }
         }
 
         stage('Generate SBOM') {
             steps {
-                withCredentials([usernamePassword(
-                    credentialsId: DOCKER_CREDENTIALS_ID,
-                    usernameVariable: 'DOCKER_USERNAME',
-                    passwordVariable: 'DOCKER_PASSWORD'
-                )]) {
-                    sh '''
-                        trivy image \
-                          --format spdx-json \
-                          --output sbom.spdx.json \
-                          ${DOCKER_USERNAME}/tasklist-backend:${BUILD_NUMBER}
-                    '''
-                }
+                sh '''
+                    docker run --rm \
+                    -v /var/run/docker.sock:/var/run/docker.sock \
+                    -v $PWD:/workspace \
+                    aquasec/trivy image \
+                    --format spdx-json \
+                    --output /workspace/sbom.spdx.json \
+                    ${DOCKER_IMAGE}:${DOCKER_TAG}
+                '''
             }
+
             post {
                 always {
                     archiveArtifacts artifacts: 'sbom.spdx.json', allowEmptyArchive: true
@@ -119,19 +119,34 @@ pipeline {
             }
         }
 
-        stage('Docker push') {
+        stage('Docker login & push') {
             steps {
-                sh 'echo $DOCKERHUB_CREDENTIALS_PSW | docker login -u $DOCKERHUB_CREDENTIALS_USR --password-stdin'
-                sh 'docker push $DOCKER_IMAGE:$IMAGE_TAG'
-                sh 'docker push $DOCKER_IMAGE:latest'
+                withCredentials([usernamePassword(
+                    credentialsId: 'dockerhub-creds-id',
+                    usernameVariable: 'DOCKER_USERNAME',
+                    passwordVariable: 'DOCKER_PASSWORD'
+                )]) {
+                    sh '''
+                        echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+
+                        docker tag ${DOCKER_IMAGE}:${DOCKER_TAG} ${DOCKER_IMAGE}:${DOCKER_TAG}
+                        docker tag ${DOCKER_IMAGE}:${DOCKER_TAG} ${DOCKER_IMAGE}:latest
+
+                        docker push ${DOCKER_IMAGE}:${DOCKER_TAG}
+                        docker push ${DOCKER_IMAGE}:latest
+
+                        docker logout
+                    '''
+                }
             }
         }
     }
 
     post {
-    always {
-      archiveArtifacts allowEmptyArchive: true, artifacts: 'coverage/*.lcov.info,reports/*.json,reports/*.xml'
-      cleanWs()
+        always {
+            archiveArtifacts allowEmptyArchive: true,
+                artifacts: 'coverage/*.lcov.info,reports/*.json,reports/*.txt,sbom.spdx.json'
+            cleanWs()
+        }
     }
-  }
 }
