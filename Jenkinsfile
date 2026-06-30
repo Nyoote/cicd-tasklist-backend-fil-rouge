@@ -98,22 +98,11 @@ pipeline {
 
         stage('Generate SBOM') {
             steps {
-                sh '''
-                    mkdir -p reports
-
-                    docker run --rm \
-                    -v /var/run/docker.sock:/var/run/docker.sock \
-                    -v $(pwd)/reports:/reports \
-                    aquasec/trivy:latest image \
-                    --format cyclonedx \
-                    --output /reports/sbom.json \
-                    $DOCKER_IMAGE:$IMAGE_TAG
-                '''
+                sh 'trivy image --format cyclonedx -o sbom.json $DOCKER_IMAGE:$IMAGE_TAG'
             }
-
             post {
                 always {
-                    archiveArtifacts artifacts: 'reports/sbom.json', fingerprint: true, allowEmptyArchive: true
+                    archiveArtifacts artifacts: 'sbom.json', fingerprint: true, allowEmptyArchive: true
                 }
             }
         }
