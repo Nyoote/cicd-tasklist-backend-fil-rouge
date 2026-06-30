@@ -68,11 +68,8 @@ pipeline {
         }
 
         stage('Trivy scan') {
-            when { expression { shouldRunStage('Trivy scan', ['Jenkinsfile', 'package.json', 'package-lock.json', 'src/**', 'prisma/**', 'Dockerfile', 'docker-compose.yml', 'docker-compose.ci.yml']) } }
-            steps { sh 'npm run trivy:scan' }
-            post {
-                success { markStageSuccess('Trivy scan') }
-                always { archiveArtifacts allowEmptyArchive: true, artifacts: 'reports/trivy-vulnerabilities.json' }
+            steps {
+                sh 'npm run trivy:scan'
             }
         }
 
@@ -82,13 +79,6 @@ pipeline {
             post {
                 success { markStageSuccess('Generate SBOM') }
                 always { archiveArtifacts allowEmptyArchive: true, artifacts: 'reports/sbom.cdx.json' }
-            }
-        }
-
-
-        stage('Publish Reports') {
-            steps {
-                archiveArtifacts artifacts: 'reports/*.json', fingerprint: true    
             }
         }
 
@@ -109,8 +99,9 @@ pipeline {
     }
 
     post {
-        always {
-            cleanWs()
-        }
+    always {
+      archiveArtifacts allowEmptyArchive: true, artifacts: 'coverage/*.lcov.info,reports/*.json,reports/*.xml'
+      cleanWs()
     }
+  }
 }

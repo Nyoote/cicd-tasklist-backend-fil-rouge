@@ -33,7 +33,7 @@ services:
       - json
       - --output
       - /reports/trivy-vulnerabilities.json
-      - efrei-pro-pipepline-tp4-backend:latest
+      - nyoote/tasklist-backend:local
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - trivy-cache:/root/.cache/trivy
