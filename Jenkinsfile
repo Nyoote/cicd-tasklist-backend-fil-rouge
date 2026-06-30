@@ -56,10 +56,10 @@ pipeline {
             }
         }
 
-                stage('SonarQube analysis') {
+        stage('SonarQube analysis') {
             steps {
                 withCredentials([
-                    string(credentialsId: 'faustine-sonar-token', variable: 'SONAR_TOKEN'),
+                    string(credentialsId: 'faustine-sonar-token-backend', variable: 'SONAR_TOKEN'),
                 ]) {
                     sh '''
                         sonar-scanner \
