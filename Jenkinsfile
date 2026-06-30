@@ -7,9 +7,9 @@ pipeline {
 
     environment {
         SONAR_HOST_URL = 'https://sonarqube.cicd.kits.ext.educentre.fr'
-        SONAR_PROJECT_KEY = 'faustine-tasklist-backend'
+        SONAR_PROJECT_KEY = 'faustine-cicd-tasklist-backend'
 
-        LOCAL_IMAGE = 'faustine-tasklist-backend:latest'
+        LOCAL_IMAGE = 'jenkins-with-docker'
         DOCKERHUB_IMAGE = 'nyoote/tasklist-backend'
 
         DOCKER_BUILDKIT = '1'
