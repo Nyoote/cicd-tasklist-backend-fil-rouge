@@ -7,6 +7,7 @@ pipeline {
 
         SONAR_HOST_URL = "https://sonarqube.cicd.kits.ext.educentre.fr"
         SONAR_PROJECT_KEY = "faustine-cicd-tasklist-backend"
+        SONAR_TOKEN = credentials("faustine-sonar-token")
 
         DOCKERHUB_CREDENTIALS = "dockerhub-creds-id"
     }
@@ -69,31 +70,43 @@ pipeline {
 
         stage('Trivy scan') {
             steps {
-                sh 'npm run trivy:scan'
+                sh '''
+                    trivy image \
+                        --severity HIGH,CRITICAL \
+                        --format table \
+                        --output trivy-report.txt \
+                        $DOCKER_IMAGE:$IMAGE_TAG || true
+
+                    trivy image \
+                        --severity HIGH,CRITICAL \
+                        --format json \
+                        --output trivy-report.json \
+                        $DOCKER_IMAGE:$IMAGE_TAG || true
+                '''
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'trivy-report.*', fingerprint: true
+                }
             }
         }
 
         stage('Generate SBOM') {
-            when { expression { shouldRunStage('Generate SBOM', ['Jenkinsfile', 'package.json', 'package-lock.json', 'src/**', 'prisma/**', 'Dockerfile', 'docker-compose.yml', 'docker-compose.ci.yml']) } }
-            steps { sh 'npm run trivy:sbom' }
+            steps {
+                sh 'trivy image --format cyclonedx -o sbom.json $DOCKER_IMAGE:$IMAGE_TAG'
+            }
             post {
-                success { markStageSuccess('Generate SBOM') }
-                always { archiveArtifacts allowEmptyArchive: true, artifacts: 'reports/sbom.cdx.json' }
+                always {
+                    archiveArtifacts artifacts: 'sbom.json', fingerprint: true, allowEmptyArchive: true
+                }
             }
         }
 
-        stage('Push Docker Image') {
+        stage('Docker push') {
             steps {
-                withCredentials([usernamePassword(
-                    credentialsId: "${DOCKERHUB_CREDENTIALS}",
-                    usernameVariable: 'DOCKER_USER',
-                    passwordVariable: 'DOCKER_PASS'
-                )]) {
-                    sh """
-                        echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
-                        docker push ${DOCKER_IMAGE}:${DOCKER_TAG}
-                    """
-                }
+                sh 'echo $DOCKERHUB_CREDENTIALS_PSW | docker login -u $DOCKERHUB_CREDENTIALS_USR --password-stdin'
+                sh 'docker push $DOCKER_IMAGE:$IMAGE_TAG'
+                sh 'docker push $DOCKER_IMAGE:latest'
             }
         }
     }
