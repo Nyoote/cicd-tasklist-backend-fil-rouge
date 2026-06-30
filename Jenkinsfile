@@ -3,6 +3,7 @@ pipeline {
 
     environment {
         DOCKER_IMAGE = "nyoote/tasklist-backend"
+        DOCKER_CREDENTIALS_ID = "nyoote-dockerhub-password"
         DOCKER_TAG = "local"
 
         SONAR_HOST_URL = "https://sonarqube.cicd.kits.ext.educentre.fr"
@@ -98,11 +99,22 @@ pipeline {
 
         stage('Generate SBOM') {
             steps {
-                sh 'trivy image --format cyclonedx -o sbom.json $DOCKER_IMAGE:$IMAGE_TAG'
+                withCredentials([usernamePassword(
+                    credentialsId: DOCKER_CREDENTIALS_ID,
+                    usernameVariable: 'DOCKER_USERNAME',
+                    passwordVariable: 'DOCKER_PASSWORD'
+                )]) {
+                    sh '''
+                        trivy image \
+                          --format spdx-json \
+                          --output sbom.spdx.json \
+                          ${DOCKER_USERNAME}/cicd-tasklist-backend:${BUILD_NUMBER}
+                    '''
+                }
             }
             post {
                 always {
-                    archiveArtifacts artifacts: 'sbom.json', fingerprint: true, allowEmptyArchive: true
+                    archiveArtifacts artifacts: 'sbom.spdx.json', allowEmptyArchive: true
                 }
             }
         }
