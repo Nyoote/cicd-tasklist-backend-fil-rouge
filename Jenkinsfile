@@ -108,7 +108,7 @@ pipeline {
                         trivy image \
                           --format spdx-json \
                           --output sbom.spdx.json \
-                          ${DOCKER_USERNAME}/cicd-tasklist-backend:${BUILD_NUMBER}
+                          ${DOCKER_USERNAME}/tasklist-backend:${BUILD_NUMBER}
                     '''
                 }
             }
