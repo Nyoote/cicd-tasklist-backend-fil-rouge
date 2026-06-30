@@ -64,8 +64,8 @@ pipeline {
                     ]) {
                         sh '''
                             docker run --rm \
-                            -v "$(pwd):/usr/src" \
-                            -w /usr/src \
+                            -v jenkins_home:/var/jenkins_home \
+                            -w /var/jenkins_home/workspace/nyoote-backend \
                             sonarsource/sonar-scanner-cli \
                             -Dsonar.projectKey=${SONAR_PROJECT_KEY} \
                             -Dsonar.sources=src \
