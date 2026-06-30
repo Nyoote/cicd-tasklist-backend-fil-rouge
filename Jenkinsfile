@@ -59,8 +59,7 @@ pipeline {
                 stage('SonarQube analysis') {
             steps {
                 withCredentials([
-                    string(credentialsId: 'louisan-sonar-token-backend', variable: 'SONAR_TOKEN'),
-                    string(credentialsId: 'faustine-sonar-host-url', variable: 'SONAR_HOST_URL')
+                    string(credentialsId: 'faustine-sonar-token', variable: 'SONAR_TOKEN'),
                 ]) {
                     sh '''
                         sonar-scanner \
