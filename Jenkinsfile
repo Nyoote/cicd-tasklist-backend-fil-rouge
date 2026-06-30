@@ -3,6 +3,7 @@ pipeline {
 
     environment {
         DOCKERHUB_CREDENTIALS = credentials('nyoote-dockerhub-password')
+        SONAR_HOST_URL = 'https://sonarqube.cicd.kits.ext.educentre.fr'
         SONAR_TOKEN            = credentials('faustine-sonar-token')
         IMAGE_NAME             = "nyoote/tasklist-backend"
         IMAGE_TAG              = "${env.BUILD_NUMBER}"
@@ -49,15 +50,22 @@ pipeline {
             }
             post {
                 always {
-                    junit testResults: 'reports/junit-e2e.xml', allowEmptyResults: true
+                    junit testResults: 'reports/junit.xml', allowEmptyResults: true
                 }
             }
         }
 
         stage('SonarQube analysis') {
             steps {
-                withSonarQubeEnv('SonarQube') {
-                    sh 'npx sonar-scanner -Dsonar.login=$SONAR_TOKEN'
+                withCredentials([
+                    string(credentialsId: 'faustine-sonar-token', variable: 'SONAR_TOKEN')
+                ]) {
+                    sh '''
+                        curl -sSLo /tmp/sonar-scanner.zip \
+                          https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-6.2.1.4610-linux.zip
+                        unzip -q /tmp/sonar-scanner.zip -d /opt
+                        /opt/sonar-scanner-6.2.1.4610-linux/bin/sonar-scanner
+                    '''
                 }
             }
         }
