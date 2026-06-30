@@ -1,155 +1,125 @@
 pipeline {
-    agent any
+  agent any
 
-    environment {
-        DOCKERHUB_CREDENTIALS = credentials('nyoote-dockerhub-password')
-        SONAR_HOST_URL = 'https://sonarqube.cicd.kits.ext.educentre.fr'
-        SONAR_TOKEN            = credentials('faustine-sonar-token')
-        SONAR_PROJECT_KEY      = 'faustine-cicd-tasklist-backend'
-        IMAGE_NAME             = "nyoote/tasklist-backend"
-        IMAGE_TAG              = "${env.BUILD_NUMBER}"
+  triggers {
+    pollSCM('H/2 * * * *')
+  }
+
+  environment {
+    JENKINS_URL = 'http://localhost:8080/'
+    SONAR_HOST_URL = 'https://sonarqube.cicd.kits.ext.educentre.fr'
+    SONAR_PROJECT_KEY = 'faustine-tasklist-backend'
+    LOCAL_IMAGE = 'jenkins-with-docker'
+    DOCKERHUB_IMAGE = 'nyoote/tasklist-backend'
+    DOCKER_BUILDKIT = '1'
+  }
+
+  stages {
+    stage('Install dependencies') {
+      steps {
+        sh 'npm ci'
+      }
     }
 
-    options {
-        timestamps()
-        disableConcurrentBuilds()
+    stage('Generate Prisma client') {
+      steps {
+        sh 'npm run prisma:generate'
+      }
     }
 
-    triggers {
-        pollSCM('H/2 * * * *')
-    }
-
-    stages {
-
-        stage('Install dependencies') {
-            steps {
-                sh 'npm ci'
-            }
-        }
-
-        stage('Generate Prisma client') {
-            steps {
-                sh 'npx prisma generate'
-            }
-        }
-
-        stage('Unit tests') {
-            steps {
-                sh 'npm run test:coverage'
-            }
-            post {
-                always {
-                    junit testResults: 'reports/junit.xml', allowEmptyResults: true
-                    archiveArtifacts artifacts: 'coverage/**', allowEmptyArchive: true
-                }
-            }
-        }
-
-        stage('End-to-end tests') {
-            steps {
-                sh 'npm run test:e2e:coverage'
-            }
-            post {
-                always {
-                    junit testResults: 'reports/junit.xml', allowEmptyResults: true
-                }
-            }
-        }
-
-        stage('SonarQube analysis') {
-            steps {
-                withSonarQubeEnv('SonarQube') {
-                    withCredentials([
-                        string(credentialsId: 'faustine-sonar-token', variable: 'SONAR_TOKEN')
-                    ]) {
-                        sh '''
-                            docker run --rm \
-                            -v jenkins_home:/var/jenkins_home \
-                            -w /var/jenkins_home/workspace/nyoote-backend \
-                            sonarsource/sonar-scanner-cli \
-                            -Dsonar.projectKey=${SONAR_PROJECT_KEY} \
-                            -Dsonar.sources=src \
-                            -Dsonar.tests=src/__tests__ \
-                            -Dsonar.test.inclusions=src/__tests__/**/*.test.ts \
-                            -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info \
-                            -Dsonar.sourceEncoding=UTF-8 \
-                            -Dsonar.host.url=${SONAR_HOST_URL} \
-                            -Dsonar.token=${SONAR_TOKEN} \
-                            -Dsonar.working.directory=.scannerwork
-                        '''
-                    }
-                }
-            }
-        }
-
-        stage('Quality Gate') {
-            steps {
-                timeout(time: 5, unit: 'MINUTES') {
-                    waitForQualityGate abortPipeline: true
-                }
-            }
-        }
-
-        stage('Build Docker image') {
-            steps {
-                sh "docker build -t ${IMAGE_NAME}:${IMAGE_TAG} -t ${IMAGE_NAME}:latest ."
-            }
-        }
-
-        stage('Trivy security scan') {
-            steps {
-                sh """
-                    docker run --rm \
-                        -v /var/run/docker.sock:/var/run/docker.sock \
-                        -v \$(pwd):/report \
-                        aquasec/trivy:latest image \
-                        --severity HIGH,CRITICAL \
-                        --exit-code 1 \
-                        --format json \
-                        --output /report/trivy-report.json \
-                        ${IMAGE_NAME}:${IMAGE_TAG}
-                """
-            }
-            post {
-                always {
-                    archiveArtifacts artifacts: 'trivy-report.json', allowEmptyArchive: true
-                }
-            }
-        }
-
-        stage('Generate SBOM') {
-            steps {
-                sh """
-                    docker run --rm \
-                        -v /var/run/docker.sock:/var/run/docker.sock \
-                        -v \$(pwd):/report \
-                        anchore/syft:latest \
-                        ${IMAGE_NAME}:${IMAGE_TAG} \
-                        -o spdx-json=/report/sbom-spdx.json
-                """
-            }
-            post {
-                always {
-                    archiveArtifacts artifacts: 'sbom-spdx.json', allowEmptyArchive: true
-                }
-            }
-        }
-
-        stage('Push Docker image') {
-            steps {
-                sh """
-                    echo "\$DOCKERHUB_CREDENTIALS_PSW" | docker login -u "\$DOCKERHUB_CREDENTIALS_USR" --password-stdin
-                    docker push ${IMAGE_NAME}:${IMAGE_TAG}
-                    docker push ${IMAGE_NAME}:latest
-                    docker logout
-                """
-            }
-        }
-    }
-
-    post {
+    stage('Unit tests') {
+      steps {
+        sh 'npm run test:coverage'
+        sh 'mkdir -p reports coverage'
+        sh 'cp reports/junit.xml reports/junit-unit.xml'
+        sh 'cp coverage/lcov.info coverage/unit.lcov.info'
+      }
+      post {
         always {
-            cleanWs()
+          junit allowEmptyResults: true, testResults: 'reports/junit-unit.xml'
         }
+      }
     }
+
+    stage('E2E tests') {
+      steps {
+        sh 'npm run test:e2e:coverage'
+        sh 'cp reports/junit.xml reports/junit-e2e.xml'
+        sh 'cp coverage/lcov.info coverage/e2e.lcov.info'
+      }
+      post {
+        always {
+          junit allowEmptyResults: true, testResults: 'reports/junit-e2e.xml'
+        }
+      }
+    }
+
+    stage('SonarQube analysis and Quality Gate') {
+      steps {
+        withCredentials([string(credentialsId: 'faustine-sonar-token', variable: 'SONAR_TOKEN')]) {
+          sh '''
+            docker compose -f docker-compose.ci.yml run --rm \
+              -e SONAR_HOST_URL="${SONAR_HOST_URL}" \
+              -e SONAR_TOKEN="${SONAR_TOKEN}" \
+              -e SONAR_PROJECT_KEY="${SONAR_PROJECT_KEY}" \
+              sonar-scanner
+          '''
+        }
+      }
+    }
+
+    stage('Docker build') {
+      steps {
+        sh 'npm run docker:build'
+      }
+    }
+
+    stage('Trivy scan') {
+      steps {
+        sh 'npm run trivy:scan'
+      }
+      post {
+        always {
+          archiveArtifacts allowEmptyArchive: true, artifacts: 'reports/trivy-vulnerabilities.json'
+        }
+      }
+    }
+
+    stage('Generate SBOM') {
+      steps {
+        sh 'npm run trivy:sbom'
+      }
+      post {
+        always {
+          archiveArtifacts allowEmptyArchive: true, artifacts: 'reports/sbom.cdx.json'
+        }
+      }
+    }
+
+    stage('Push Docker image') {
+      steps {
+        withCredentials([usernamePassword(
+          credentialsId: 'nyoote-dockerhub-password',
+          usernameVariable: 'DOCKERHUB_USERNAME',
+          passwordVariable: 'DOCKERHUB_PASSWORD'
+        )]) {
+          sh '''
+            echo "${DOCKERHUB_PASSWORD}" | docker login -u "${DOCKERHUB_USERNAME}" --password-stdin
+            docker tag "${LOCAL_IMAGE}" "${DOCKERHUB_IMAGE}:${BUILD_NUMBER}"
+            docker tag "${LOCAL_IMAGE}" "${DOCKERHUB_IMAGE}:latest"
+            docker push "${DOCKERHUB_IMAGE}:${BUILD_NUMBER}"
+            docker push "${DOCKERHUB_IMAGE}:latest"
+            docker logout
+          '''
+        }
+      }
+    }
+  }
+
+  post {
+    always {
+      archiveArtifacts allowEmptyArchive: true, artifacts: 'coverage/*.lcov.info,reports/*.json,reports/*.xml'
+      cleanWs()
+    }
+  }
 }
