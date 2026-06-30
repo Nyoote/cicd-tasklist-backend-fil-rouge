@@ -85,18 +85,23 @@ pipeline {
                 sh '''
                 docker run --rm \
                 -v /var/run/docker.sock:/var/run/docker.sock \
-                -v $WORKSPACE:/workspace \
+                -v $WORKSPACE:/app \
+                -w /app \
                 aquasec/trivy:latest image \
+                --scanners vuln,secret,license \
                 --format spdx-json \
-                --output /workspace/sbom-spdx.json \
+                --output sbom-spdx.json \
                 nyoote/tasklist-backend:local
+
+                echo "=== CHECK FILE ==="
+                ls -lah
                 '''
             }
         }
 
         stage('Publish Reports') {
             steps {
-                archiveArtifacts artifacts: 'trivy-report.txt,sbom-spdx.json', fingerprint: true
+                archiveArtifacts artifacts: 'sbom-spdx.json', fingerprint: true    
             }
         }
 
