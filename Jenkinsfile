@@ -69,10 +69,15 @@ pipeline {
 
         stage('Trivy Security Scan') {
             steps {
-                sh """
-                    trivy image --severity CRITICAL,HIGH --format table \
-                    ${DOCKER_IMAGE}:${DOCKER_TAG} > trivy-report.txt
-                """
+                sh '''
+                docker run --rm \
+                    -v /var/run/docker.sock:/var/run/docker.sock \
+                    aquasec/trivy:latest \
+                    image \
+                    --severity CRITICAL,HIGH \
+                    --format table \
+                    nyoote/tasklist-backend:local
+                '''
             }
         }
 
