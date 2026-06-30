@@ -3,7 +3,7 @@ pipeline {
 
     environment {
         DOCKERHUB_CREDENTIALS = credentials('nyoote-dockerhub-password')
-        SONAR_TOKEN            = credentials('nyoote-sonar-token')
+        SONAR_TOKEN            = credentials('faustine-sonar-token')
         IMAGE_NAME             = "nyoote/tasklist-backend"
         IMAGE_TAG              = "${env.BUILD_NUMBER}"
     }
