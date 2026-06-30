@@ -3,7 +3,7 @@ pipeline {
 
     environment {
         DOCKERHUB_CREDENTIALS = credentials('nyoote-dockerhub-password')
-        SONAR_TOKEN            = credentials(secrets.SONAR_TOKEN)
+        SONAR_TOKEN            = credentials('nyoote-sonar-token')
         IMAGE_NAME             = "nyoote/tasklist-backend"
         IMAGE_TAG              = "${env.BUILD_NUMBER}"
     }
@@ -43,7 +43,7 @@ pipeline {
             }
         }
 
-        stage('E2e tests') {
+        stage('End-to-end tests') {
             steps {
                 sh 'npm run test:e2e:coverage'
             }
@@ -132,3 +132,4 @@ pipeline {
             cleanWs()
         }
     }
+}
