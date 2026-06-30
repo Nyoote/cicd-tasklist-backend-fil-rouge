@@ -62,12 +62,17 @@ pipeline {
                     string(credentialsId: 'faustine-sonar-token', variable: 'SONAR_TOKEN')
                 ]) {
                     sh '''
-                        docker run --rm \
-                          -e SONAR_HOST_URL="$SONAR_HOST_URL" \
-                          -e SONAR_TOKEN="$SONAR_TOKEN" \
-                          -e SONAR_PROJECT_KEY="$SONAR_PROJECT_KEY" \
-                          -v "$PWD:/usr/src" \
-                          sonarsource/sonar-scanner-cli
+                    docker run --rm \
+                    -e SONAR_HOST_URL=https://sonarqube.cicd.kits.ext.educentre.fr \
+                    -e SONAR_TOKEN=$SONAR_TOKEN \
+                    -v $WORKSPACE:/usr/src \
+                    -w /usr/src \
+                    sonarsource/sonar-scanner-cli \
+                    -Dsonar.projectKey=faustine-cicd-tasklist-backend \
+                    -Dsonar.sources=src \
+                    -Dsonar.tests=src/__tests__ \
+                    -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info \
+                    -Dsonar.projectBaseDir=/usr/src
                     '''
                 }
             }
