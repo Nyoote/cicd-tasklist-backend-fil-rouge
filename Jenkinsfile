@@ -63,7 +63,10 @@ pipeline {
                         string(credentialsId: 'faustine-sonar-token', variable: 'SONAR_TOKEN')
                     ]) {
                         sh '''
-                            sonar-scanner \
+                            docker run --rm \
+                            -v "$(pwd):/usr/src" \
+                            -w /usr/src \
+                            sonarsource/sonar-scanner-cli \
                             -Dsonar.projectKey=${SONAR_PROJECT_KEY} \
                             -Dsonar.sources=src \
                             -Dsonar.tests=src/__tests__ \
