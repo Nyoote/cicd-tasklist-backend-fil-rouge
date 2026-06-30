@@ -55,16 +55,18 @@ pipeline {
             }
         }
 
-        stage('SonarQube analysis') {
+                stage('SonarQube analysis') {
             steps {
                 withCredentials([
                     string(credentialsId: 'faustine-sonar-token', variable: 'SONAR_TOKEN')
                 ]) {
                     sh '''
-                        curl -sSLo /tmp/sonar-scanner.zip \
-                          https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-6.2.1.4610-linux.zip
-                        unzip -q /tmp/sonar-scanner.zip -d /opt
-                        /opt/sonar-scanner-6.2.1.4610-linux/bin/sonar-scanner
+                        docker run --rm \
+                          -v "$(pwd):/usr/src" \
+                          -w /usr/src \
+                          sonarsource/sonar-scanner-cli \
+                          -Dsonar.host.url="$SONAR_HOST_URL" \
+                          -Dsonar.token="$SONAR_TOKEN"
                     '''
                 }
             }
