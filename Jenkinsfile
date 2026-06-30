@@ -5,6 +5,7 @@ pipeline {
         DOCKERHUB_CREDENTIALS = credentials('nyoote-dockerhub-password')
         SONAR_HOST_URL = 'https://sonarqube.cicd.kits.ext.educentre.fr'
         SONAR_TOKEN            = credentials('faustine-sonar-token')
+        SONAR_PROJECT_KEY      = 'faustine-cicd-tasklist-backend'
         IMAGE_NAME             = "nyoote/tasklist-backend"
         IMAGE_TAG              = "${env.BUILD_NUMBER}"
     }
@@ -58,15 +59,19 @@ pipeline {
                 stage('SonarQube analysis') {
             steps {
                 withCredentials([
-                    string(credentialsId: 'faustine-sonar-token', variable: 'SONAR_TOKEN')
+                    string(credentialsId: 'louisan-sonar-token-backend', variable: 'SONAR_TOKEN'),
+                    string(credentialsId: 'faustine-sonar-host-url', variable: 'SONAR_HOST_URL')
                 ]) {
                     sh '''
-                        docker run --rm \
-                          -v "$(pwd):/usr/src" \
-                          -w /usr/src \
-                          sonarsource/sonar-scanner-cli \
-                          -Dsonar.host.url="$SONAR_HOST_URL" \
-                          -Dsonar.token="$SONAR_TOKEN"
+                        sonar-scanner \
+                          -Dsonar.projectKey=${SONAR_PROJECT_KEY} \
+                          -Dsonar.sources=src \
+                          -Dsonar.tests=src/__tests__ \
+                          -Dsonar.test.inclusions=src/__tests__/**/*.test.ts \
+                          -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info \
+                          -Dsonar.sourceEncoding=UTF-8 \
+                          -Dsonar.host.url=${SONAR_HOST_URL} \
+                          -Dsonar.token=${SONAR_TOKEN}
                     '''
                 }
             }
