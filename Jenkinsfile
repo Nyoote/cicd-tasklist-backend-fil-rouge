@@ -58,20 +58,22 @@ pipeline {
 
         stage('SonarQube analysis') {
             steps {
-                withCredentials([
-                    string(credentialsId: 'faustine-sonar-token', variable: 'SONAR_TOKEN'),
-                ]) {
-                    sh '''
-                        sonar-scanner \
-                          -Dsonar.projectKey=${SONAR_PROJECT_KEY} \
-                          -Dsonar.sources=src \
-                          -Dsonar.tests=src/__tests__ \
-                          -Dsonar.test.inclusions=src/__tests__/**/*.test.ts \
-                          -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info \
-                          -Dsonar.sourceEncoding=UTF-8 \
-                          -Dsonar.host.url=${SONAR_HOST_URL} \
-                          -Dsonar.token=${SONAR_TOKEN}
-                    '''
+                withSonarQubeEnv('SonarQube') {
+                    withCredentials([
+                        string(credentialsId: 'faustine-sonar-token', variable: 'SONAR_TOKEN')
+                    ]) {
+                        sh '''
+                            sonar-scanner \
+                            -Dsonar.projectKey=${SONAR_PROJECT_KEY} \
+                            -Dsonar.sources=src \
+                            -Dsonar.tests=src/__tests__ \
+                            -Dsonar.test.inclusions=src/__tests__/**/*.test.ts \
+                            -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info \
+                            -Dsonar.sourceEncoding=UTF-8 \
+                            -Dsonar.host.url=${SONAR_HOST_URL} \
+                            -Dsonar.token=${SONAR_TOKEN}
+                        '''
+                    }
                 }
             }
         }
